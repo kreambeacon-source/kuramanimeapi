@@ -29,10 +29,11 @@ async function initBrowser() {
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
                 '--disable-gpu',
-                '--window-size=1920,1080'
+                '--window-size=1920,1080',
+                '--disable-blink-features=AutomationControlled' // 🛡️ Sembunyikan status otomatisasi
             ]
         });
-        console.log("✅ Playwright Browser Siap!");
+        console.log("✅ Playwright Browser Siap (Anti-Detection Mode)!");
     } catch (error) {
         console.error("❌ Gagal menginisialisasi browser:", error);
     }
@@ -48,7 +49,38 @@ function resolveAnimePath(slug) {
 }
 
 // ==========================================
-// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1) [DENGAN API INTERCEPTION]
+// Helper: Membuat Context dengan Anti-Detection Lanjutan
+// ==========================================
+async function createStealthContext(browserInstance) {
+    const context = await browserInstance.newContext({ 
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        viewport: { width: 1920, height: 1080 },
+        locale: 'id-ID',
+        timezoneId: 'Asia/Jakarta',
+        permissions: ['geolocation'],
+        extraHTTPHeaders: {
+            'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"'
+        }
+    });
+
+    // 🛡️ Injeksi skrip untuk menghapus jejak navigator.webdriver
+    await context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => false,
+        });
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3, 4, 5],
+        });
+    });
+
+    return context;
+}
+
+// ==========================================
+// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1)
 // ==========================================
 app.get('/api/latest', async (req, res) => {
     if (!browser) return res.status(500).json({ success: false, error: "Browser belum siap." });
@@ -58,28 +90,8 @@ app.get('/api/latest', async (req, res) => {
     const pageNum = req.query.page || 1;
 
     try {
-        context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 }
-        });
+        context = await createStealthContext(browser);
         page = await context.newPage();
-
-        // 🎯 PASANG SNIFFER API INTERCEPTION
-        page.on('response', async (response) => {
-            const url = response.url();
-            if (url.includes('/api/') || url.includes('/json') || url.includes('/ongoing')) {
-                try {
-                    const contentType = response.headers()['content-type'] || '';
-                    if (contentType.includes('application/json')) {
-                        const jsonDat = await response.json();
-                        console.log(`🎯 [API INTERCEPT /latest] Ditemukan JSON dari: ${url}`);
-                        console.log(JSON.stringify(jsonDat).slice(0, 200) + '...');
-                    }
-                } catch (e) {
-                    // Abaikan error parsing JSON dari file aset lain
-                }
-            }
-        });
 
         console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum}...`);
         const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
@@ -161,10 +173,7 @@ app.get('/api/schedule', async (req, res) => {
     const scheduledDay = dayMap[dayInput] || 'monday';
 
     try {
-        context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 }
-        });
+        context = await createStealthContext(browser);
         page = await context.newPage();
 
         console.log(`🔍 Fetching Jadwal Rilis Hari: ${dayInput} (${scheduledDay})...`);
@@ -233,10 +242,7 @@ app.get('/api/popular', async (req, res) => {
     const pageNum = req.query.page || 1;
 
     try {
-        context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 }
-        });
+        context = await createStealthContext(browser);
         page = await context.newPage();
 
         console.log(`🔍 Fetching Popular Musim Ini Halaman ${pageNum}...`);
@@ -305,10 +311,7 @@ app.get('/api/movies', async (req, res) => {
     const pageNum = req.query.page || 1;
 
     try {
-        context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 }
-        });
+        context = await createStealthContext(browser);
         page = await context.newPage();
 
         console.log(`🔍 Fetching Film Layar Lebar Halaman ${pageNum}...`);
@@ -385,10 +388,7 @@ app.get('/api/catalog', async (req, res) => {
     } = req.query;
 
     try {
-        context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 }
-        });
+        context = await createStealthContext(browser);
         page = await context.newPage();
 
         let TARGET_URL = `${BASE_URL}/anime?order_by=${order_by}&page=${pageNum}`;
@@ -476,10 +476,7 @@ app.get('/api/detail', async (req, res) => {
     let page = null;
 
     try {
-        context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 }
-        });
+        context = await createStealthContext(browser);
         page = await context.newPage();
 
         console.log(`🔍 Fetching Detail: ${targetUrl}`);
@@ -575,12 +572,7 @@ app.get('/api/watch', async (req, res) => {
     let extractedVideoUrl = null;
 
     try {
-        context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 },
-            extraHTTPHeaders: { 'Referer': BASE_URL }
-        });
-
+        context = await createStealthContext(browser);
         page = await context.newPage();
 
         page.on('request', (request) => {
