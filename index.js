@@ -48,7 +48,7 @@ function resolveAnimePath(slug) {
 }
 
 // ==========================================
-// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1)
+// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1) [DENGAN API INTERCEPTION]
 // ==========================================
 app.get('/api/latest', async (req, res) => {
     if (!browser) return res.status(500).json({ success: false, error: "Browser belum siap." });
@@ -60,15 +60,28 @@ app.get('/api/latest', async (req, res) => {
     try {
         context = await browser.newContext({ 
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            viewport: { width: 1920, height: 1080 },
-            deviceScaleFactor: 1,
-            bypassCSP: true,
-            javaScriptEnabled: true
+            viewport: { width: 1920, height: 1080 }
         });
         page = await context.newPage();
 
+        // 🎯 PASANG SNIFFER API INTERCEPTION
+        page.on('response', async (response) => {
+            const url = response.url();
+            if (url.includes('/api/') || url.includes('/json') || url.includes('/ongoing')) {
+                try {
+                    const contentType = response.headers()['content-type'] || '';
+                    if (contentType.includes('application/json')) {
+                        const jsonDat = await response.json();
+                        console.log(`🎯 [API INTERCEPT /latest] Ditemukan JSON dari: ${url}`);
+                        console.log(JSON.stringify(jsonDat).slice(0, 200) + '...');
+                    }
+                } catch (e) {
+                    // Abaikan error parsing JSON dari file aset lain
+                }
+            }
+        });
+
         console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum}...`);
-        
         const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
         
         await page.goto(TARGET_ONGOING_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
@@ -155,7 +168,6 @@ app.get('/api/schedule', async (req, res) => {
         page = await context.newPage();
 
         console.log(`🔍 Fetching Jadwal Rilis Hari: ${dayInput} (${scheduledDay})...`);
-        
         const TARGET_SCHEDULE_URL = `${BASE_URL}/schedule?scheduled_day=${scheduledDay}`;
         
         await page.goto(TARGET_SCHEDULE_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
