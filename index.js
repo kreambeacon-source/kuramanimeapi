@@ -23,7 +23,14 @@ async function initBrowser() {
     try {
         browser = await chromium.launch({
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--window-size=1920,1080'
+            ]
         });
         console.log("✅ Playwright Browser Siap!");
     } catch (error) {
@@ -52,7 +59,11 @@ app.get('/api/latest', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 },
+            deviceScaleFactor: 1,
+            bypassCSP: true,
+            javaScriptEnabled: true
         });
         page = await context.newPage();
 
@@ -138,7 +149,8 @@ app.get('/api/schedule', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 }
         });
         page = await context.newPage();
 
@@ -210,7 +222,8 @@ app.get('/api/popular', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 }
         });
         page = await context.newPage();
 
@@ -281,7 +294,8 @@ app.get('/api/movies', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 }
         });
         page = await context.newPage();
 
@@ -349,34 +363,30 @@ app.get('/api/catalog', async (req, res) => {
     let context = null;
     let page = null;
     
-    // Query Parameters
     const { 
-        search = '',           // Support pencarian kata kunci judul
-        category = 'all',      // 'all', 'ongoing', 'finished', 'upcoming', 'movie', 'donghua'
-        property_type = '',    // 'genre', 'season', 'studio', 'type', 'quality', 'source', 'country'
-        property_slug = '',    // e.g., 'action', 'fall-2023', 'mappa'
-        order_by = 'ascending',// 'ascending' (A-Z), 'descending' (Z-A), 'most_viewed', 'rating', 'updated', 'oldest'
+        search = '',          
+        category = 'all',     
+        property_type = '',   
+        property_slug = '',   
+        order_by = 'ascending',
         page: pageNum = 1 
     } = req.query;
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 }
         });
         page = await context.newPage();
 
-        // 🎯 Konstruksi URL Otomatis Berdasarkan Filter & Pencarian
         let TARGET_URL = `${BASE_URL}/anime?order_by=${order_by}&page=${pageNum}`;
 
-        // Jika ada query pencarian kata kunci, hilangkan order_by agar tidak mengganggu pencarian murni Kuramanime
         if (search && search.trim() !== '') {
             TARGET_URL = `${BASE_URL}/anime?search=${encodeURIComponent(search.trim())}&page=${pageNum}`;
         }
-        // Jika memilih properti spesifik (misal: Genre / Studio / Season)
         else if (property_type && property_slug) {
             TARGET_URL = `${BASE_URL}/properties/${property_type}/${property_slug}?order_by=${order_by}&page=${pageNum}`;
         } 
-        // Jika memilih status quick (Ongoing, Finished, Movie, Donghua, dll)
         else if (category !== 'all') {
             TARGET_URL = `${BASE_URL}/quick/${category}?order_by=${order_by}&page=${pageNum}`;
         }
@@ -454,7 +464,10 @@ app.get('/api/detail', async (req, res) => {
     let page = null;
 
     try {
-        context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' });
+        context = await browser.newContext({ 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 }
+        });
         page = await context.newPage();
 
         console.log(`🔍 Fetching Detail: ${targetUrl}`);
@@ -551,7 +564,8 @@ app.get('/api/watch', async (req, res) => {
 
     try {
         context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 },
             extraHTTPHeaders: { 'Referer': BASE_URL }
         });
 
@@ -632,7 +646,7 @@ app.get('/api/proxy-video', async (req, res) => {
     try {
         const headers = {
             'Referer': BASE_URL,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
         };
 
         if (req.headers.range) {
