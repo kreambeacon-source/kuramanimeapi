@@ -23,15 +23,7 @@ async function initBrowser() {
     try {
         browser = await chromium.launch({
             headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--disable-gpu'
-            ]
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
         });
         console.log("✅ Playwright Browser Siap!");
     } catch (error) {
@@ -49,7 +41,7 @@ function resolveAnimePath(slug) {
 }
 
 // ==========================================
-// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1) - DEBUGGING VERSION
+// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1)
 // ==========================================
 app.get('/api/latest', async (req, res) => {
     if (!browser) return res.status(500).json({ success: false, error: "Browser belum siap." });
@@ -60,69 +52,60 @@ app.get('/api/latest', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            extraHTTPHeaders: { 'Referer': BASE_URL }
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
         });
         page = await context.newPage();
 
-        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum} via Playwright Debugger...`);
+        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum}...`);
+        
         const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
         
-        await page.goto(TARGET_ONGOING_URL, { waitUntil: 'domcontentloaded', timeout: 35000 });
-        
-        // Beri jeda waktu 5 detik agar script client/AJAX merender halaman sempurna
-        await delay(5000);
+        await page.goto(TARGET_ONGOING_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForSelector('.product__item, .col-6', { timeout: 6000 }).catch(() => {});
 
-        // Cetak judul halaman yang berhasil ditangkap
-        const pageTitle = await page.title();
-        console.log(`📄 Judul Halaman Target: "${pageTitle}"`);
-
-        let latestAnime = await page.evaluate(() => {
+        const latestAnime = await page.evaluate(() => {
             const items = [];
-            // Pindai semua tag <a> di halaman yang memuat path /anime/
-            document.querySelectorAll('a').forEach((a) => {
-                const href = a.href || '';
-                const title = a.innerText ? a.innerText.trim() : '';
+            document.querySelectorAll('.product__item').forEach((el) => {
+                const linkEl = el.querySelector('a[href*="/anime/"]');
+                const picEl = el.querySelector('.product__item__pic');
+                const titleEl = el.querySelector('.product__item__text h5 a') || el.querySelector('h5 a') || el.querySelector('h5');
+                const epEl = el.querySelector('.ep') || el.querySelector('.product__item__pic div') || el.querySelector('.badge');
+
+                const rawUrl = linkEl ? linkEl.href : '';
+                const title = titleEl ? titleEl.innerText.trim() : '';
                 
-                if (href.includes('/anime/') && title.length > 3 && !items.some(i => i.url === href)) {
-                    let clean = href.replace(/\/$/, '');
+                let image = picEl ? picEl.getAttribute('data-setbg') : '';
+                if (!image && picEl) {
+                    const imgInside = picEl.querySelector('img');
+                    if (imgInside) image = imgInside.src || imgInside.getAttribute('data-src') || '';
+                }
+
+                const episode = epEl ? epEl.innerText.trim() : 'Ep Baru';
+
+                if (title && rawUrl) {
+                    let clean = rawUrl.replace(/\/$/, '');
                     if (clean.includes('/episode/')) clean = clean.split('/episode/')[0];
                     const parts = clean.split('/anime/');
                     const slug = parts.length > 1 ? parts[1].replace(/\//g, '__') : '';
 
-                    if (slug) {
-                        items.push({
-                            id: slug,
-                            title: title,
-                            episode: 'Ep Baru',
-                            url: href,
-                            image: 'https://via.placeholder.com/300x450.png?text=AniXp',
-                            poster: 'https://via.placeholder.com/300x450.png?text=AniXp',
-                            type: "Ongoing Anime"
-                        });
-                    }
+                    items.push({
+                        id: slug,
+                        title,
+                        episode,
+                        url: rawUrl,
+                        image: image || '',
+                        poster: image || '',
+                        type: "Ongoing Anime"
+                    });
                 }
             });
             return items;
         });
 
-        console.log(`📊 Total link anime mentah yang tertangkap: ${latestAnime.length}`);
-
-        if (latestAnime.length === 0) {
-            latestAnime.push({
-                id: "fallback-anime",
-                title: "Struktur DOM Berubah",
-                episode: "Info",
-                url: BASE_URL,
-                image: "https://via.placeholder.com/300x450.png?text=AniXp+Debug",
-                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Debug",
-                type: "Ongoing Anime"
-            });
-        }
-
+        console.log(`✅ Berhasil mengambil ${latestAnime.length} anime ongoing (Halaman ${pageNum})!`);
         res.json({ success: true, page: Number(pageNum), count: latestAnime.length, data: latestAnime });
     } catch (error) {
-        console.error("❌ Error /api/latest Playwright:", error.message);
+        console.error("❌ Error /api/latest:", error.message);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         if (page) await page.close().catch(() => {});
@@ -155,7 +138,7 @@ app.get('/api/schedule', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
         });
         page = await context.newPage();
 
@@ -163,12 +146,12 @@ app.get('/api/schedule', async (req, res) => {
         
         const TARGET_SCHEDULE_URL = `${BASE_URL}/schedule?scheduled_day=${scheduledDay}`;
         
-        await page.goto(TARGET_SCHEDULE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForSelector('.product__item, .col-6', { timeout: 8000 }).catch(() => {});
+        await page.goto(TARGET_SCHEDULE_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForSelector('.product__item, .col-6', { timeout: 6000 }).catch(() => {});
 
         const scheduleAnime = await page.evaluate(() => {
             const items = [];
-            document.querySelectorAll('.product__item, .col-6').forEach((el) => {
+            document.querySelectorAll('.product__item').forEach((el) => {
                 const linkEl = el.querySelector('a[href*="/anime/"]');
                 const picEl = el.querySelector('.product__item__pic');
                 const titleEl = el.querySelector('.product__item__text h5 a') || el.querySelector('h5 a') || el.querySelector('h5');
@@ -227,19 +210,19 @@ app.get('/api/popular', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
         });
         page = await context.newPage();
 
         console.log(`🔍 Fetching Popular Musim Ini Halaman ${pageNum}...`);
         const TARGET_URL = `${BASE_URL}/properties/season/summer-2026?order_by=most_viewed&page=${pageNum}`;
         
-        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForSelector('.product__item, .col-6', { timeout: 8000 }).catch(() => {});
+        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForSelector('.product__item, .col-6', { timeout: 6000 }).catch(() => {});
 
         const popularAnime = await page.evaluate(() => {
             const items = [];
-            document.querySelectorAll('.product__item, .col-6').forEach((el) => {
+            document.querySelectorAll('.product__item').forEach((el) => {
                 const linkEl = el.querySelector('a[href*="/anime/"]');
                 const picEl = el.querySelector('.product__item__pic');
                 const titleEl = el.querySelector('.product__item__text h5 a') || el.querySelector('h5 a') || el.querySelector('h5');
@@ -298,19 +281,19 @@ app.get('/api/movies', async (req, res) => {
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
         });
         page = await context.newPage();
 
         console.log(`🔍 Fetching Film Layar Lebar Halaman ${pageNum}...`);
         const TARGET_URL = `${BASE_URL}/quick/movie?order_by=updated&page=${pageNum}`;
         
-        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForSelector('.product__item, .col-6', { timeout: 8000 }).catch(() => {});
+        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForSelector('.product__item, .col-6', { timeout: 6000 }).catch(() => {});
 
         const movies = await page.evaluate(() => {
             const items = [];
-            document.querySelectorAll('.product__item, .col-6').forEach((el) => {
+            document.querySelectorAll('.product__item').forEach((el) => {
                 const linkEl = el.querySelector('a[href*="/anime/"]');
                 const picEl = el.querySelector('.product__item__pic');
                 const titleEl = el.querySelector('.product__item__text h5 a') || el.querySelector('h5 a') || el.querySelector('h5');
@@ -366,39 +349,46 @@ app.get('/api/catalog', async (req, res) => {
     let context = null;
     let page = null;
     
+    // Query Parameters
     const { 
-        search = '',           
-        category = 'all',      
-        property_type = '',    
-        property_slug = '',    
-        order_by = 'ascending',
+        search = '',           // Support pencarian kata kunci judul
+        category = 'all',      // 'all', 'ongoing', 'finished', 'upcoming', 'movie', 'donghua'
+        property_type = '',    // 'genre', 'season', 'studio', 'type', 'quality', 'source', 'country'
+        property_slug = '',    // e.g., 'action', 'fall-2023', 'mappa'
+        order_by = 'ascending',// 'ascending' (A-Z), 'descending' (Z-A), 'most_viewed', 'rating', 'updated', 'oldest'
         page: pageNum = 1 
     } = req.query;
 
     try {
         context = await browser.newContext({ 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' 
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' 
         });
         page = await context.newPage();
 
+        // 🎯 Konstruksi URL Otomatis Berdasarkan Filter & Pencarian
         let TARGET_URL = `${BASE_URL}/anime?order_by=${order_by}&page=${pageNum}`;
 
+        // Jika ada query pencarian kata kunci, hilangkan order_by agar tidak mengganggu pencarian murni Kuramanime
         if (search && search.trim() !== '') {
             TARGET_URL = `${BASE_URL}/anime?search=${encodeURIComponent(search.trim())}&page=${pageNum}`;
-        } else if (property_type && property_slug) {
+        }
+        // Jika memilih properti spesifik (misal: Genre / Studio / Season)
+        else if (property_type && property_slug) {
             TARGET_URL = `${BASE_URL}/properties/${property_type}/${property_slug}?order_by=${order_by}&page=${pageNum}`;
-        } else if (category !== 'all') {
+        } 
+        // Jika memilih status quick (Ongoing, Finished, Movie, Donghua, dll)
+        else if (category !== 'all') {
             TARGET_URL = `${BASE_URL}/quick/${category}?order_by=${order_by}&page=${pageNum}`;
         }
 
         console.log(`🔍 Fetching Catalog URL: ${TARGET_URL}`);
         
-        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForSelector('.product__item, .col-6', { timeout: 8000 }).catch(() => {});
+        await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForSelector('.product__item, .col-6', { timeout: 6000 }).catch(() => {});
 
         const catalogAnime = await page.evaluate(() => {
             const items = [];
-            document.querySelectorAll('.product__item, .col-6').forEach((el) => {
+            document.querySelectorAll('.product__item').forEach((el) => {
                 const linkEl = el.querySelector('a[href*="/anime/"]');
                 const picEl = el.querySelector('.product__item__pic');
                 const titleEl = el.querySelector('.product__item__text h5 a') || el.querySelector('h5 a') || el.querySelector('h5');
@@ -446,7 +436,7 @@ app.get('/api/catalog', async (req, res) => {
 });
 
 // ==========================================
-// 2. ENDPOINT: Detail Anime (/api/detail)
+// 2. ENDPOINT: Detail Anime (/api/detail) — [SMART DETECT EPISODES]
 // ==========================================
 app.get('/api/detail', async (req, res) => {
     let { id, url } = req.query;
@@ -464,18 +454,18 @@ app.get('/api/detail', async (req, res) => {
     let page = null;
 
     try {
-        context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' });
+        context = await browser.newContext({ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' });
         page = await context.newPage();
 
         console.log(`🔍 Fetching Detail: ${targetUrl}`);
         
         try {
-            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
         } catch (e) {
             console.warn("⚠️ Timeout loading page, proceeding with DOM content.");
         }
 
-        await delay(2000);
+        await delay(1500);
 
         const detailData = await page.evaluate(() => {
             const title = document.querySelector('.anime__details__title h3, h3, h1')?.innerText.trim() || '';
@@ -561,7 +551,7 @@ app.get('/api/watch', async (req, res) => {
 
     try {
         context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             extraHTTPHeaders: { 'Referer': BASE_URL }
         });
 
@@ -593,12 +583,12 @@ app.get('/api/watch', async (req, res) => {
         });
 
         console.log(`🎬 Scraper Mengunjungi Episode: ${targetUrl}`);
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 25000 });
 
-        await page.waitForSelector('#animeVideoPlayer, video, .plyr', { timeout: 6000 }).catch(() => {});
+        await page.waitForSelector('#animeVideoPlayer, video, .plyr', { timeout: 5000 }).catch(() => {});
         await page.click('#animeVideoPlayer, video, .plyr').catch(() => {});
 
-        await delay(3000);
+        await delay(2500);
 
         if (!extractedVideoUrl) {
             extractedVideoUrl = await page.evaluate(() => {
@@ -642,7 +632,7 @@ app.get('/api/proxy-video', async (req, res) => {
     try {
         const headers = {
             'Referer': BASE_URL,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         };
 
         if (req.headers.range) {
