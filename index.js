@@ -19,9 +19,13 @@ let browser = null;
 const BASE_URL = 'https://v20.kuramanime.ing';
 const FALLBACK_VIDEO = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 
+// 🌐 KONFIGURASI PROXY PUBLIK (Ganti IP & Port jika diperlukan)
+// Catatan: Proxy publik gratis rentan mati, pastikan menggunakan proxy HTTP/SOCKS5 yang aktif jika ingin hasil optimal.
+const PUBLIC_PROXY = process.env.PROXY_SERVER || ''; // Contoh: 'http://182.52.251.14:8080'
+
 async function initBrowser() {
     try {
-        browser = await chromium.launch({
+        const launchOptions = {
             headless: true,
             args: [
                 '--no-sandbox',
@@ -32,8 +36,16 @@ async function initBrowser() {
                 '--no-zygote',
                 '--disable-gpu'
             ]
-        });
-        console.log("✅ Playwright Browser Siap!");
+        };
+
+        // Jika menggunakan proxy tingkat browser
+        if (PUBLIC_PROXY) {
+            launchOptions.proxy = { server: PUBLIC_PROXY };
+            console.log(`🛡️ Menggunakan Proxy Server: ${PUBLIC_PROXY}`);
+        }
+
+        browser = await chromium.launch(launchOptions);
+        console.log("✅ Playwright Browser Siap dengan Proteksi Proxy!");
     } catch (error) {
         console.error("❌ Gagal menginisialisasi browser:", error);
     }
@@ -59,16 +71,23 @@ app.get('/api/latest', async (req, res) => {
     const pageNum = req.query.page || 1;
 
     try {
-        context = await browser.newContext({ 
+        const contextOptions = { 
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             extraHTTPHeaders: {
                 'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
                 'Cache-Control': 'no-cache'
             }
-        });
+        };
+
+        // Jika proxy diatur per context
+        if (PUBLIC_PROXY && !browser.isConnected?.()) {
+            contextOptions.proxy = { server: PUBLIC_PROXY };
+        }
+
+        context = await browser.newContext(contextOptions);
         page = await context.newPage();
 
-        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum}...`);
+        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum} via Proxy...`);
         
         const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
         
@@ -115,14 +134,14 @@ app.get('/api/latest', async (req, res) => {
         });
 
         if (latestAnime.length === 0) {
-            console.warn("⚠️ Data kosong terdeteksi, mengaktifkan struktur fallback aman...");
+            console.warn("⚠️ Data kosong terdeteksi (kemungkinan proxy terblokir/lambat), mengaktifkan struktur fallback aman...");
             latestAnime.push({
                 id: "fallback-anime",
-                title: "Server Sedang Menyesuaikan Proteksi",
+                title: "Server Sedang Menyesuaikan Proxy",
                 episode: "Info",
                 url: `${BASE_URL}`,
-                image: "https://via.placeholder.com/300x450.png?text=AniXp+Ready",
-                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Ready",
+                image: "https://via.placeholder.com/300x450.png?text=AniXp+Proxy",
+                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Proxy",
                 type: "Ongoing Anime"
             });
         }
