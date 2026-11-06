@@ -73,13 +73,10 @@ app.get('/api/latest', async (req, res) => {
         const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
         
         await page.goto(TARGET_ONGOING_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        
-        // Coba tunggu berbagai macam kemungkinan selector container anime
         await page.waitForSelector('.product__item, .col-6, .col-lg-3, article', { timeout: 8000 }).catch(() => {});
 
         let latestAnime = await page.evaluate(() => {
             const items = [];
-            // Perluas pencarian selector untuk mengantisipasi perubahan struktur situs target
             document.querySelectorAll('.product__item, .col-6, .col-lg-3').forEach((el) => {
                 const linkEl = el.querySelector('a[href*="/anime/"]');
                 const picEl = el.querySelector('.product__item__pic');
@@ -117,7 +114,6 @@ app.get('/api/latest', async (req, res) => {
             return items;
         });
 
-        // 🛡️ [FALLBACK DATA] Jika struktur asli gagal dan mengembalikan 0, berikan data cadangan dummy agar aplikasi tidak kosong
         if (latestAnime.length === 0) {
             console.warn("⚠️ Data kosong terdeteksi, mengaktifkan struktur fallback aman...");
             latestAnime.push({
