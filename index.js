@@ -49,7 +49,7 @@ function resolveAnimePath(slug) {
 }
 
 // ==========================================
-// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1)
+// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1) - DEBUGGING VERSION
 // ==========================================
 app.get('/api/latest', async (req, res) => {
     if (!browser) return res.status(500).json({ success: false, error: "Browser belum siap." });
@@ -61,102 +61,65 @@ app.get('/api/latest', async (req, res) => {
     try {
         context = await browser.newContext({ 
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            extraHTTPHeaders: {
-                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Cache-Control': 'no-cache',
-                'Referer': BASE_URL
-            }
+            extraHTTPHeaders: { 'Referer': BASE_URL }
         });
         page = await context.newPage();
 
-        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum} via Playwright Browser...`);
-        
+        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum} via Playwright Debugger...`);
         const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
         
-        // Tunggu halaman sampai idle jaringannya agar script internal render sempurna
-        await page.goto(TARGET_ONGOING_URL, { waitUntil: 'networkidle', timeout: 35000 }).catch(() => {});
-        await delay(3000);
+        await page.goto(TARGET_ONGOING_URL, { waitUntil: 'domcontentloaded', timeout: 35000 });
+        
+        // Beri jeda waktu 5 detik agar script client/AJAX merender halaman sempurna
+        await delay(5000);
+
+        // Cetak judul halaman yang berhasil ditangkap
+        const pageTitle = await page.title();
+        console.log(`📄 Judul Halaman Target: "${pageTitle}"`);
 
         let latestAnime = await page.evaluate(() => {
             const items = [];
-            document.querySelectorAll('.product__item, .col-6, .col-lg-3').forEach((el) => {
-                const linkEl = el.querySelector('a[href*="/anime/"]');
-                const picEl = el.querySelector('.product__item__pic');
-                const titleEl = el.querySelector('.product__item__text h5 a') || el.querySelector('h5 a') || el.querySelector('h5') || el.querySelector('a');
-                const epEl = el.querySelector('.ep') || el.querySelector('.product__item__pic div') || el.querySelector('.badge');
-
-                const rawUrl = linkEl ? linkEl.href : '';
-                const title = titleEl ? titleEl.innerText.trim() : '';
+            // Pindai semua tag <a> di halaman yang memuat path /anime/
+            document.querySelectorAll('a').forEach((a) => {
+                const href = a.href || '';
+                const title = a.innerText ? a.innerText.trim() : '';
                 
-                let image = picEl ? picEl.getAttribute('data-setbg') : '';
-                if (!image && picEl) {
-                    const imgInside = picEl.querySelector('img');
-                    if (imgInside) image = imgInside.src || imgInside.getAttribute('data-src') || '';
-                }
-
-                const episode = epEl ? epEl.innerText.trim() : 'Ep Baru';
-
-                if (title && rawUrl && !items.some(i => i.title === title)) {
-                    let clean = rawUrl.replace(/\/$/, '');
+                if (href.includes('/anime/') && title.length > 3 && !items.some(i => i.url === href)) {
+                    let clean = href.replace(/\/$/, '');
                     if (clean.includes('/episode/')) clean = clean.split('/episode/')[0];
                     const parts = clean.split('/anime/');
                     const slug = parts.length > 1 ? parts[1].replace(/\//g, '__') : '';
 
-                    items.push({
-                        id: slug,
-                        title,
-                        episode,
-                        url: rawUrl,
-                        image: image || '',
-                        poster: image || '',
-                        type: "Ongoing Anime"
-                    });
+                    if (slug) {
+                        items.push({
+                            id: slug,
+                            title: title,
+                            episode: 'Ep Baru',
+                            url: href,
+                            image: 'https://via.placeholder.com/300x450.png?text=AniXp',
+                            poster: 'https://via.placeholder.com/300x450.png?text=AniXp',
+                            type: "Ongoing Anime"
+                        });
+                    }
                 }
             });
             return items;
         });
 
-        // Fallback jika selector spesifik tidak mendapatkan data sama sekali
-        if (latestAnime.length === 0) {
-            console.warn("⚠️ Menggunakan scraper fallback untuk menangkap elemen anime...");
-            latestAnime = await page.evaluate(() => {
-                const list = [];
-                document.querySelectorAll('a[href*="/anime/"]').forEach(a => {
-                    const title = a.innerText.trim();
-                    const href = a.href;
-                    if (title && title.length > 3 && !list.some(i => i.url === href)) {
-                        const clean = href.replace(/\/$/, '').split('/anime/');
-                        const slug = clean.length > 1 ? clean[1].replace(/\//g, '__') : '';
-                        if (slug) {
-                            list.push({
-                                id: slug,
-                                title: title,
-                                episode: 'Ep Baru',
-                                url: href,
-                                image: 'https://via.placeholder.com/300x450.png?text=AniXp',
-                                poster: 'https://via.placeholder.com/300x450.png?text=AniXp',
-                                type: "Ongoing Anime"
-                            });
-                        }
-                    }
-                });
-                return list;
-            });
-        }
+        console.log(`📊 Total link anime mentah yang tertangkap: ${latestAnime.length}`);
 
         if (latestAnime.length === 0) {
             latestAnime.push({
                 id: "fallback-anime",
-                title: "Server Sedang Menyesuaikan",
+                title: "Struktur DOM Berubah",
                 episode: "Info",
-                url: `${BASE_URL}`,
-                image: "https://via.placeholder.com/300x450.png?text=AniXp+Ready",
-                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Ready",
+                url: BASE_URL,
+                image: "https://via.placeholder.com/300x450.png?text=AniXp+Debug",
+                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Debug",
                 type: "Ongoing Anime"
             });
         }
 
-        console.log(`✅ Berhasil mengambil ${latestAnime.length} anime ongoing via Playwright (Halaman ${pageNum})!`);
         res.json({ success: true, page: Number(pageNum), count: latestAnime.length, data: latestAnime });
     } catch (error) {
         console.error("❌ Error /api/latest Playwright:", error.message);
