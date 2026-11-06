@@ -49,7 +49,7 @@ function resolveAnimePath(slug) {
 }
 
 // ==========================================
-// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1) - Playwright Browser Automation
+// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1)
 // ==========================================
 app.get('/api/latest', async (req, res) => {
     if (!browser) return res.status(500).json({ success: false, error: "Browser belum siap." });
@@ -63,7 +63,8 @@ app.get('/api/latest', async (req, res) => {
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             extraHTTPHeaders: {
                 'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Cache-Control': 'no-cache'
+                'Cache-Control': 'no-cache',
+                'Referer': BASE_URL
             }
         });
         page = await context.newPage();
@@ -72,8 +73,9 @@ app.get('/api/latest', async (req, res) => {
         
         const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
         
-        await page.goto(TARGET_ONGOING_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForSelector('.product__item, .col-6, .col-lg-3, article', { timeout: 8000 }).catch(() => {});
+        // Tunggu halaman sampai idle jaringannya agar script internal render sempurna
+        await page.goto(TARGET_ONGOING_URL, { waitUntil: 'networkidle', timeout: 35000 }).catch(() => {});
+        await delay(3000);
 
         let latestAnime = await page.evaluate(() => {
             const items = [];
@@ -94,7 +96,7 @@ app.get('/api/latest', async (req, res) => {
 
                 const episode = epEl ? epEl.innerText.trim() : 'Ep Baru';
 
-                if (title && rawUrl) {
+                if (title && rawUrl && !items.some(i => i.title === title)) {
                     let clean = rawUrl.replace(/\/$/, '');
                     if (clean.includes('/episode/')) clean = clean.split('/episode/')[0];
                     const parts = clean.split('/anime/');
@@ -114,8 +116,35 @@ app.get('/api/latest', async (req, res) => {
             return items;
         });
 
+        // Fallback jika selector spesifik tidak mendapatkan data sama sekali
         if (latestAnime.length === 0) {
-            console.warn("⚠️ Data kosong terdeteksi melalui browser, menggunakan fallback aman...");
+            console.warn("⚠️ Menggunakan scraper fallback untuk menangkap elemen anime...");
+            latestAnime = await page.evaluate(() => {
+                const list = [];
+                document.querySelectorAll('a[href*="/anime/"]').forEach(a => {
+                    const title = a.innerText.trim();
+                    const href = a.href;
+                    if (title && title.length > 3 && !list.some(i => i.url === href)) {
+                        const clean = href.replace(/\/$/, '').split('/anime/');
+                        const slug = clean.length > 1 ? clean[1].replace(/\//g, '__') : '';
+                        if (slug) {
+                            list.push({
+                                id: slug,
+                                title: title,
+                                episode: 'Ep Baru',
+                                url: href,
+                                image: 'https://via.placeholder.com/300x450.png?text=AniXp',
+                                poster: 'https://via.placeholder.com/300x450.png?text=AniXp',
+                                type: "Ongoing Anime"
+                            });
+                        }
+                    }
+                });
+                return list;
+            });
+        }
+
+        if (latestAnime.length === 0) {
             latestAnime.push({
                 id: "fallback-anime",
                 title: "Server Sedang Menyesuaikan",
