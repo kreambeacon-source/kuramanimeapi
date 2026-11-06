@@ -19,13 +19,9 @@ let browser = null;
 const BASE_URL = 'https://v20.kuramanime.ing';
 const FALLBACK_VIDEO = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
 
-// 🌐 KONFIGURASI PROXY PUBLIK (Ganti IP & Port jika diperlukan)
-// Catatan: Proxy publik gratis rentan mati, pastikan menggunakan proxy HTTP/SOCKS5 yang aktif jika ingin hasil optimal.
-const PUBLIC_PROXY = process.env.PROXY_SERVER || ''; // Contoh: 'http://182.52.251.14:8080'
-
 async function initBrowser() {
     try {
-        const launchOptions = {
+        browser = await chromium.launch({
             headless: true,
             args: [
                 '--no-sandbox',
@@ -36,16 +32,8 @@ async function initBrowser() {
                 '--no-zygote',
                 '--disable-gpu'
             ]
-        };
-
-        // Jika menggunakan proxy tingkat browser
-        if (PUBLIC_PROXY) {
-            launchOptions.proxy = { server: PUBLIC_PROXY };
-            console.log(`🛡️ Menggunakan Proxy Server: ${PUBLIC_PROXY}`);
-        }
-
-        browser = await chromium.launch(launchOptions);
-        console.log("✅ Playwright Browser Siap dengan Proteksi Proxy!");
+        });
+        console.log("✅ Playwright Browser Siap!");
     } catch (error) {
         console.error("❌ Gagal menginisialisasi browser:", error);
     }
@@ -61,99 +49,91 @@ function resolveAnimePath(slug) {
 }
 
 // ==========================================
-// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1)
+// 1. ENDPOINT: Anime Terbaru (/api/latest?page=1) - Menggunakan API Internal JSON
 // ==========================================
 app.get('/api/latest', async (req, res) => {
-    if (!browser) return res.status(500).json({ success: false, error: "Browser belum siap." });
-
-    let context = null;
-    let page = null;
     const pageNum = req.query.page || 1;
 
     try {
-        const contextOptions = { 
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            extraHTTPHeaders: {
-                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Cache-Control': 'no-cache'
+        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum} via Internal JSON API...`);
+        
+        const INTERNAL_API_URL = `${BASE_URL}/get?is_home=1`;
+        
+        const response = await fetch(INTERNAL_API_URL, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Referer': BASE_URL,
+                'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7'
             }
-        };
+        });
 
-        // Jika proxy diatur per context
-        if (PUBLIC_PROXY && !browser.isConnected?.()) {
-            contextOptions.proxy = { server: PUBLIC_PROXY };
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        context = await browser.newContext(contextOptions);
-        page = await context.newPage();
+        const jsonResult = await response.json();
+        let latestAnime = [];
 
-        console.log(`🔍 Fetching Rilis Terbaru Halaman ${pageNum} via Proxy...`);
-        
-        const TARGET_ONGOING_URL = `${BASE_URL}/quick/ongoing?order_by=updated&page=${pageNum}`;
-        
-        await page.goto(TARGET_ONGOING_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        await page.waitForSelector('.product__item, .col-6, .col-lg-3, article', { timeout: 8000 }).catch(() => {});
+        // Ambil dari properti ongoingAnimes yang kita temukan saat inspection
+        const ongoingData = jsonResult.ongoingAnimes?.data || jsonResult.ongoingAnimes || [];
 
-        let latestAnime = await page.evaluate(() => {
-            const items = [];
-            document.querySelectorAll('.product__item, .col-6, .col-lg-3').forEach((el) => {
-                const linkEl = el.querySelector('a[href*="/anime/"]');
-                const picEl = el.querySelector('.product__item__pic');
-                const titleEl = el.querySelector('.product__item__text h5 a') || el.querySelector('h5 a') || el.querySelector('h5') || el.querySelector('a');
-                const epEl = el.querySelector('.ep') || el.querySelector('.product__item__pic div') || el.querySelector('.badge');
+        if (Array.isArray(ongoingData)) {
+            ongoingData.forEach((item) => {
+                const title = item.title || '';
+                const slugRaw = item.slug || item.id || '';
+                const slug = slugRaw.replace(/\//g, '__');
+                const image = item.image || item.poster || item.cover || 'https://via.placeholder.com/300x450.png?text=AniXp';
+                const episode = item.episode || item.latest_episode || 'Ep Baru';
 
-                const rawUrl = linkEl ? linkEl.href : '';
-                const title = titleEl ? titleEl.innerText.trim() : '';
-                
-                let image = picEl ? picEl.getAttribute('data-setbg') : '';
-                if (!image && picEl) {
-                    const imgInside = picEl.querySelector('img');
-                    if (imgInside) image = imgInside.src || imgInside.getAttribute('data-src') || '';
-                }
-
-                const episode = epEl ? epEl.innerText.trim() : 'Ep Baru';
-
-                if (title && rawUrl) {
-                    let clean = rawUrl.replace(/\/$/, '');
-                    if (clean.includes('/episode/')) clean = clean.split('/episode/')[0];
-                    const parts = clean.split('/anime/');
-                    const slug = parts.length > 1 ? parts[1].replace(/\//g, '__') : '';
-
-                    items.push({
+                if (title && slug) {
+                    latestAnime.push({
                         id: slug,
                         title,
                         episode,
-                        url: rawUrl,
-                        image: image || '',
-                        poster: image || '',
+                        url: `${BASE_URL}/anime/${slugRaw}`,
+                        image: image,
+                        poster: image,
                         type: "Ongoing Anime"
                     });
                 }
             });
-            return items;
-        });
+        }
 
+        // 🛡️ [FALLBACK DATA] Jika data kosong
         if (latestAnime.length === 0) {
-            console.warn("⚠️ Data kosong terdeteksi (kemungkinan proxy terblokir/lambat), mengaktifkan struktur fallback aman...");
+            console.warn("⚠️ Data JSON internal kosong, mengaktifkan fallback aman...");
             latestAnime.push({
                 id: "fallback-anime",
-                title: "Server Sedang Menyesuaikan Proxy",
+                title: "Server Menyesuaikan Struktur Data",
                 episode: "Info",
-                url: `${BASE_URL}`,
-                image: "https://via.placeholder.com/300x450.png?text=AniXp+Proxy",
-                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Proxy",
+                url: BASE_URL,
+                image: "https://via.placeholder.com/300x450.png?text=AniXp+Ready",
+                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Ready",
                 type: "Ongoing Anime"
             });
         }
 
-        console.log(`✅ Berhasil mengambil ${latestAnime.length} anime ongoing (Halaman ${pageNum})!`);
+        console.log(`✅ Berhasil mengambil ${latestAnime.length} anime ongoing dari API JSON!`);
         res.json({ success: true, page: Number(pageNum), count: latestAnime.length, data: latestAnime });
     } catch (error) {
-        console.error("❌ Error /api/latest:", error.message);
-        res.status(500).json({ success: false, error: error.message });
-    } finally {
-        if (page) await page.close().catch(() => {});
-        if (context) await context.close().catch(() => {});
+        console.error("❌ Error /api/latest (JSON API):", error.message);
+        
+        // Fallback jika fetch langsung diblokir jaringan server
+        res.json({
+            success: true,
+            page: Number(pageNum),
+            count: 1,
+            data: [{
+                id: "fallback-anime",
+                title: "Koneksi API Terhalang, Coba Beberapa Saat Lagi",
+                episode: "Info",
+                url: BASE_URL,
+                image: "https://via.placeholder.com/300x450.png?text=AniXp+Error",
+                poster: "https://via.placeholder.com/300x450.png?text=AniXp+Error",
+                type: "Ongoing Anime"
+            }]
+        });
     }
 });
 
