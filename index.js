@@ -687,7 +687,7 @@ io.on('connection', (socket) => {
     socket.on('send_message', (data) => io.to(data.roomId).emit('receive_message', data));
 });
 
-server.listen(PORT, async () => {
-    console.log(`🚀 Server Backend AniXp API berjalan di http://localhost:${PORT}`);
+server.listen(PORT, '0.0.0.0', async () => {
+    console.log(`🚀 Server Backend AniXp API berjalan di http://0.0.0.0:${PORT}`);
     await initBrowser();
 });
